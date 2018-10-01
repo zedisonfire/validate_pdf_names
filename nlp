@@ -1,0 +1,312 @@
+import pandas as pd
+import numpy as np
+import random as rn
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import graphviz 
+import IPython
+from IPython.display import display
+
+import re,copy,itertools
+
+from sklearn.metrics import accuracy_score,confusion_matrix,f1_score
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.tree import export_graphviz
+
+import sys,types,pip
+
+from botocore.client import Config
+import ibm_boto3
+
+def plot_fi(fi,figsize=(12,7)): return fi.plot('cols', 'imp', 'barh', figsize=figsize, legend=False)
+
+def rf_feat_importance(m, df):
+    return pd.DataFrame({'cols':df.columns, 'imp':m.feature_importances_}
+                       ).sort_values('imp', ascending=False)
+                       
+def split_balanced(data,target,val_size,shuffle=False):
+    "This function split the dataset preserving the val_size ration for each class."
+    idx_tr = []
+    idx_val = []
+    data.reset_index(inplace=True,drop=True)
+    
+    labels = data[target].unique().tolist()
+    
+    for i in labels: 
+        X_class = data[data[target] == i].index.tolist()
+
+        if shuffle: rn.shuffle(X_class)
+
+        length = len(X_class)
+
+        split = int(val_size * length)
+
+        idx_val += X_class[-split:]
+        idx_tr += X_class[:-split]
+    
+    return data.iloc[idx_tr,:],data.iloc[idx_val,:]
+    
+def plot_confusion_matrix(cm, classes,
+                          normalize=False,
+                          title='Confusion matrix',
+                          cmap=plt.cm.Blues):
+    """
+    This function prints and plots the confusion matrix.
+    Normalization can be applied by setting `normalize=True`.
+    """
+    plt.imshow(cm, interpolation='nearest', cmap=cmap)
+    plt.title(title)
+    plt.colorbar()
+    tick_marks = np.arange(len(classes))
+    plt.xticks(tick_marks, classes, rotation=0)
+    plt.yticks(tick_marks, classes)
+
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        #print("Normalized confusion matrix")
+    else:
+        1#print('Confusion matrix, without normalization')
+
+    #print(cm)
+
+    thresh = cm.max() / 2.
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        plt.text(j, i, cm[i, j],
+                 horizontalalignment="center",
+                 color="white" if cm[i, j] > thresh else "black")
+
+    plt.tight_layout()
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
+
+def under_samp(data,target):
+    """This function does an undersampling on the class with marjority number of samples [label = 0]
+
+    returns: undesample dataframe
+    """
+    data.reset_index(drop=True,inplace=True)
+    
+    # Number of data points in the minority class
+    number_records_fraud = len(data[data[target] == 1])
+    fraud_indices = np.array(data[data[target] == 1].index)
+
+    # Picking the indices of the normal classes
+    normal_indices = data[data[target] == 0].index
+
+    # Out of the indices we picked, randomly select "x" number (number_records_fraud)
+    random_normal_indices = np.random.choice(normal_indices, number_records_fraud, replace = False)
+    random_normal_indices = np.array(random_normal_indices)
+
+    # Appending the 2 indices
+    under_sample_indices = np.concatenate([fraud_indices,random_normal_indices])
+
+    # Under sample dataset
+    undersamp = data.iloc[under_sample_indices,:].copy()
+
+    return undersamp
+    
+def draw_tree(t, df,cls, size=10, ratio=0.6, precision=0):
+    """ Draws a representation of a random forest in IPython.
+
+    Parameters:
+    -----------
+    t: The tree you wish to draw
+    df: The data used to train the tree. This is used to get the names of the features.
+    cls = Class names
+    """
+    s=export_graphviz(t, out_file=None, feature_names=df.columns, filled=True,class_names=cls,
+                      special_characters=True, rotate=True, precision=precision)
+    IPython.display.display(graphviz.Source(re.sub("Tree {",
+      "Tree { size="+ str(size) + "; ratio=" + str(ratio), s)))
+      
+if not('ibm-cos-sdk' in [package.project_name for package in pip.get_installed_distributions()]):
+    !pip install ibm-cos-sdk==2.0.0 -q
+
+def __iter__(self): return 0
+
+# @hidden_cell
+# The following code accesses a file in your IBM Cloud Object Storage. It includes your credentials.
+
+body = client_eb9f0afa572247dc9a4034e29c2a0bf5.get_object(Bucket='workshoppuc-donotdelete-pr-1779uskw1dylpk',Key='training.csv')['Body']
+# add missing __iter__ method, so pandas accepts body as file-like object
+if not hasattr(body, "__iter__"): body.__iter__ = types.MethodType( __iter__, body )
+
+train = pd.read_csv(body)
+
+body = client_eb9f0afa572247dc9a4034e29c2a0bf5.get_object(Bucket='workshoppuc-donotdelete-pr-1779uskw1dylpk',Key='test.csv')['Body']
+
+# add missing __iter__ method, so pandas accepts body as file-like object
+if not hasattr(body, "__iter__"): body.__iter__ = types.MethodType( __iter__, body )
+
+test = pd.read_csv(body)
+
+body = client_eb9f0afa572247dc9a4034e29c2a0bf5.get_object(Bucket='workshoppuc-donotdelete-pr-1779uskw1dylpk',Key='Carvana_Data_Dictionary-1.csv')['Body']
+# add missing __iter__ method, so pandas accepts body as file-like object
+if not hasattr(body, "__iter__"): body.__iter__ = types.MethodType( __iter__, body )
+
+dic = pd.read_csv(body,sep=';')
+
+train.head()
+
+train.info()
+
+round((train.isnull().sum()/train.shape[0])*100,3)
+
+dic[dic['Field Name']=='AUCGUART']['Definition'].values
+
+train.drop(columns=['PRIMEUNIT','AUCGUART'],inplace=True)
+train.shape
+
+(train.dropna().shape[0]/train.shape[0])*100
+
+dic[dic['Field Name']=='Trim']['Definition'].values
+
+train['Trim'].value_counts()
+
+train[train['Model']=='IMPALA'].groupby(by=['SubModel'])['Trim'].unique()
+
+idx_n = train[train['Trim'].isnull()].index.values
+idx_n.shape
+
+train['Trim'].isnull().sum()
+
+idxs =[]
+for i in idx_n: 
+    model,s_model = train.loc[i,['Model','SubModel']].values
+
+
+    trim = train[(train['Model']==model)&
+                 (train['SubModel']==s_model)&
+                 (train['Trim'].notnull())]['Trim'].mode()
+    
+    if trim.shape[0] >=1:
+        train.at[i,'Trim'] = trim.values[0]
+    else: 
+        idxs.append(i)
+        
+2360 - len(idxs)
+
+train['Trim'].isnull().sum()
+
+(train.dropna().shape[0]/train.shape[0])*100
+
+train.dropna(inplace=True)
+
+train.shape
+
+train.isnull().sum().sum()
+
+train.columns
+
+train['PurchDate'] = pd.to_datetime(train['PurchDate'],infer_datetime_format=True)
+train['PurchDate'].describe()
+
+tmp = train.groupby(['Model',pd.Grouper(key='PurchDate',freq='Q')])['IsBadBuy'].sum().reset_index()
+tmp.head(3)
+
+Qs = pd.to_datetime(tmp['PurchDate'].unique())
+
+models = []
+for q in Qs: 
+    idx = tmp[tmp['PurchDate']==q]['IsBadBuy'].idxmax()
+    models.append(tmp.loc[idx,:].values)
+    
+models = pd.DataFrame(models,columns=tmp.columns.tolist())
+
+models
+
+models['PurchDate'] = pd.to_datetime(models['PurchDate'],infer_datetime_format=True)
+models['Q-Y'] =  'Q'+models.PurchDate.dt.quarter.astype(str)+ '-' + models.PurchDate.dt.year.apply(lambda x: str(x)[-2:])
+models['Q-Y']
+
+plt.figure(figsize=(12,6))
+sns.barplot(x=models['Q-Y'],y=models['IsBadBuy'],hue=models['Model'])
+plt.grid()
+plt.show()
+
+train['Make'].value_counts()
+
+tmp = round((train[train['IsBadBuy']==1]['Make'].value_counts()/train['Make'].value_counts())*100,2)
+tmp.fillna(0.,inplace=True)
+tmp.sort_values(ascending=False,inplace=True)
+tmp.plot(kind='barh',grid=True,figsize=(12,8))
+
+train['VehicleAge'].describe()
+
+plt.figure()
+sns.distplot(train['VehicleAge'])
+plt.grid()
+plt.show()
+
+train['IsOld'] = np.zeros((train.shape[0],))
+
+train.loc[train['VehicleAge']>5,'IsOld'] =1
+
+plt.figure()
+sns.barplot(x=train['IsOld'],y=train['IsBadBuy'],estimator=np.mean)
+plt.grid()
+plt.show()
+
+train.columns
+
+target = 'IsBadBuy'
+
+predictors = [x for x in train.columns if x not in [target,'RefId','PurchDate']]
+
+predictors
+
+train[target].value_counts()
+
+Xtrain= train_eq[predictors+[target]].copy()
+Xtrain[target]= Xtrain[target].astype(int)
+
+Xtrain[predictors[0]].dtype == 'O' 
+
+mapper = {}
+for col in predictors:
+    
+    if Xtrain[col].dtype == 'O' :
+
+        le = LabelEncoder()
+        Xtrain[col] = Xtrain[col].astype(str)
+        Xtrain[col] = le.fit_transform(Xtrain[col])
+        mapper[col] = copy.copy(le)
+        
+    else: 
+        
+        Xtrain[col] = Xtrain[col].astype(float)
+        
+mapper['Color'].classes_
+
+Xtrain.shape
+
+Xtrain,Xtest = split_balanced(Xtrain,target,0.2)
+Xtrain[target].value_counts()
+
+Xtest[target].value_counts()
+
+clf = RandomForestClassifier(n_estimators=100,max_depth=4,bootstrap=False,
+                             n_jobs=-1,random_state=0)
+clf.fit(Xtrain[predictors],Xtrain[target])
+
+fi = rf_feat_importance(clf, Xtrain[predictors])
+plot_fi(fi[:10],figsize=(12,8));
+
+dic[dic['Field Name']=='VehOdo']['Definition'].values
+
+draw_tree(clf.estimators_[0], Xtrain[predictors],cls=['GoodBuy','BadBuy'],ratio=0.9,size=15, precision=2)
+
+ypred = clf.predict(Xtest[predictors])
+
+accuracy_score(Xtest[target],ypred),f1_score(Xtest[target],ypred)
+
+cnf_matrix = confusion_matrix(Xtest[target],ypred,labels=[0,1])
+plt.figure()
+plot_confusion_matrix(cnf_matrix
+                      , classes=['GoodBuy','BadBuy']
+                      , title='Confusion matrix')
+plt.show()
+
